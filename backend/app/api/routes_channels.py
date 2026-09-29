@@ -139,3 +139,14 @@ def update_channel_brief(payload: BriefUpdateRequest, db: Session = Depends(get_
 
     db.commit()
     return {"message": "Brief updated successfully"}
+
+@router.post("/reset-system-data")
+def reset_system_data():
+    """
+    Clear all dummy data, sample scripts, ideas, publishing jobs, 
+    comments, reports, and generated media files across the entire system.
+    """
+    from app.db.init_db import wipe_all_sample_data
+    wipe_all_sample_data()
+    return {"message": "All sample data, ideas, scripts, and media files have been completely cleared."}
+

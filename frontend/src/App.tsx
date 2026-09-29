@@ -140,8 +140,14 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setIdeas(data);
-        if (data.length > 0 && !selectedIdeaId) {
-          setSelectedIdeaId(data[0].id);
+        if (data.length > 0) {
+          if (!selectedIdeaId || !data.some((i: any) => i.id === selectedIdeaId)) {
+            setSelectedIdeaId(data[0].id);
+          }
+        } else {
+          setSelectedIdeaId('');
+          setCurrentScript(null);
+          setVideoVersion(null);
         }
       }
     } catch (e) {
@@ -150,15 +156,25 @@ export default function App() {
   };
 
   const fetchScriptForIdea = async (ideaId: string) => {
+    if (!ideaId) {
+      setCurrentScript(null);
+      setVideoVersion(null);
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/ideas/${ideaId}/script`);
       if (res.ok) {
         const data = await res.json();
         setCurrentScript(data.script);
         setVideoVersion(null);
+      } else {
+        setCurrentScript(null);
+        setVideoVersion(null);
       }
     } catch (e) {
       console.error(e);
+      setCurrentScript(null);
+      setVideoVersion(null);
     }
   };
 
@@ -375,6 +391,36 @@ export default function App() {
         fetchChannel();
         fetchBudget();
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearSystemData = async () => {
+    if (!confirm("Are you sure you want to clear all dummy data, sample scripts, ideas, publishing jobs, comments, and media files? This will reset the workspace to a clean state.")) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/channels/reset-system-data`, { method: 'POST' });
+      if (res.ok) {
+        showMsg("All dummy data and sample records cleared successfully!");
+        fetchChannel();
+        fetchIdeas();
+        fetchResearch();
+        fetchBudget();
+        fetchPublishing();
+        fetchAnalytics();
+        fetchComments();
+        fetchPilotData();
+        setCurrentScript(null);
+        setVideoVersion(null);
+        setSelectedIdeaId('');
+      } else {
+        showMsg("Failed to reset system data", "error");
+      }
+    } catch (e: any) {
+      showMsg(e.message || "Failed to reset system data", "error");
     } finally {
       setLoading(false);
     }
@@ -969,7 +1015,7 @@ export default function App() {
                   <div style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                     <span>Handle: <strong>{authStatus?.channel_info?.custom_url || '@ClearTechMinute'}</strong></span>
                     <span>Channel ID: <code>{authStatus?.channel_info?.channel_id || channelData?.channel?.youtube_channel_id}</code></span>
-                    <span>Subscribers: <strong>{authStatus?.channel_info?.subscriber_count || '142'}</strong></span>
+                    <span>Subscribers: <strong>{authStatus?.channel_info?.subscriber_count ?? '0'}</strong></span>
                   </div>
                 </div>
 
@@ -1017,39 +1063,65 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {channelVideos.map((vid) => (
-                    <tr key={vid.video_id}>
-                      <td>
-                        <strong>{vid.title}</strong>
-                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                          {vid.description}
-                        </div>
-                      </td>
-                      <td>{new Date(vid.published_at).toLocaleDateString()}</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <a 
-                            href={vid.studio_url} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="btn btn-sm btn-secondary"
-                          >
-                            Studio Edit <ExternalLink size={12}/>
-                          </a>
-                          <a 
-                            href={vid.watch_url} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="btn btn-sm btn-primary"
-                          >
-                            Watch <ExternalLink size={12}/>
-                          </a>
-                        </div>
+                  {channelVideos.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} style={{ textAlign: 'center', padding: '1.5rem', color: '#94a3b8' }}>
+                        No published videos yet. Connect your YouTube channel or produce your first video to see it here.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    channelVideos.map((vid) => (
+                      <tr key={vid.video_id}>
+                        <td>
+                          <strong>{vid.title}</strong>
+                          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                            {vid.description}
+                          </div>
+                        </td>
+                        <td>{new Date(vid.published_at).toLocaleDateString()}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <a 
+                              href={vid.studio_url} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="btn btn-sm btn-secondary"
+                            >
+                              Studio Edit <ExternalLink size={12}/>
+                            </a>
+                            <a 
+                              href={vid.watch_url} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="btn btn-sm btn-primary"
+                            >
+                              Watch <ExternalLink size={12}/>
+                            </a>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
+            </div>
+
+            {/* System Reset / Clean State */}
+            <div className="card" style={{ borderColor: '#ef4444' }}>
+              <div className="card-header">
+                <div className="card-title" style={{ color: '#f87171' }}>System Clean State & Reset</div>
+                <span className="badge badge-red">Clean Workspace</span>
+              </div>
+              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1rem' }}>
+                Wipe all dummy/sample ideas, scripts, storyboard assets, comments, analytics reports, and media files from the database and disk while keeping your channel configuration intact.
+              </p>
+              <button 
+                className="btn btn-danger btn-sm"
+                onClick={handleClearSystemData}
+                disabled={loading}
+              >
+                <Trash2 size={14}/> Clear All Dummy & Sample Data
+              </button>
             </div>
           </div>
         )}
@@ -1080,39 +1152,45 @@ export default function App() {
             {/* List of Research Runs */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <h3 style={{ fontSize: '1.05rem' }}>Completed Topic Investigations & Evidence</h3>
-              {researchRuns.map((run) => (
-                <div key={run.id} className="card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 600, fontSize: '1rem' }}>{run.query_topic}</div>
-                    <div className="badge badge-green">
-                      Editorial Fit: {run.findings?.fit_score || 88}/100
-                    </div>
-                  </div>
-                  
-                  <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
-                    <strong>Key Finding:</strong> {run.findings?.key_takeaway || 'Viable educational concept for 45s Shorts.'}
-                  </div>
-
-                  {/* Evidence Items */}
-                  {run.evidence && run.evidence.length > 0 && (
-                    <div style={{ background: '#111827', borderRadius: '6px', padding: '0.75rem' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#60a5fa' }}>CITED SOURCES:</span>
-                      {run.evidence.map((ev: any) => (
-                        <div key={ev.id} style={{ marginTop: '0.5rem', fontSize: '0.82rem' }}>
-                          <a href={ev.source_url} target="_blank" rel="noreferrer" style={{ color: '#93c5fd', textDecoration: 'underline' }}>
-                            {ev.title} ({ev.publisher})
-                          </a>
-                          <p style={{ color: '#cbd5e1', fontStyle: 'italic', marginTop: '0.2rem' }}>"{ev.short_extract}"</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                    Limitations: {run.limitations}
-                  </div>
+              {researchRuns.length === 0 ? (
+                <div className="card" style={{ textAlign: 'center', padding: '1.5rem', color: '#94a3b8' }}>
+                  No completed topic investigations yet. Enter a topic query above to begin factual research and evidence gathering.
                 </div>
-              ))}
+              ) : (
+                researchRuns.map((run) => (
+                  <div key={run.id} className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 600, fontSize: '1rem' }}>{run.query_topic}</div>
+                      <div className="badge badge-green">
+                        Editorial Fit: {run.findings?.fit_score || 88}/100
+                      </div>
+                    </div>
+                    
+                    <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                      <strong>Key Finding:</strong> {run.findings?.key_takeaway || 'Viable educational concept for 45s Shorts.'}
+                    </div>
+
+                    {/* Evidence Items */}
+                    {run.evidence && run.evidence.length > 0 && (
+                      <div style={{ background: '#111827', borderRadius: '6px', padding: '0.75rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#60a5fa' }}>CITED SOURCES:</span>
+                        {run.evidence.map((ev: any) => (
+                          <div key={ev.id} style={{ marginTop: '0.5rem', fontSize: '0.82rem' }}>
+                            <a href={ev.source_url} target="_blank" rel="noreferrer" style={{ color: '#93c5fd', textDecoration: 'underline' }}>
+                              {ev.title} ({ev.publisher})
+                            </a>
+                            <p style={{ color: '#cbd5e1', fontStyle: 'italic', marginTop: '0.2rem' }}>"{ev.short_extract}"</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Limitations: {run.limitations}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -1130,7 +1208,7 @@ export default function App() {
                   <label className="form-label">Viewer Question (The Hook):</label>
                   <input 
                     type="text" 
-                    className="form-input"
+                    className="form-input" 
                     placeholder="e.g. Why does your battery drain faster in the cold?"
                     value={newIdeaQuestion}
                     onChange={(e) => setNewIdeaQuestion(e.target.value)}
@@ -1154,7 +1232,7 @@ export default function App() {
                     <label className="form-label">Original Angle / Analogy:</label>
                     <input 
                       type="text" 
-                      className="form-input"
+                      className="form-input" 
                       placeholder="e.g. Compare chemical reaction speed to walking in snow"
                       value={newIdeaAngle}
                       onChange={(e) => setNewIdeaAngle(e.target.value)}
@@ -1180,47 +1258,55 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {ideas.map((idea) => (
-                    <tr key={idea.id}>
-                      <td>
-                        <strong>{idea.question}</strong>
-                        {idea.original_angle && (
-                          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                            Angle: {idea.original_angle}
-                          </div>
-                        )}
-                      </td>
-                      <td><span className="badge badge-purple">{idea.pillar}</span></td>
-                      <td><span className="badge badge-blue">{idea.editorial_fit_score}/100</span></td>
-                      <td>
-                        <span className={`badge ${
-                          idea.status === 'produced' ? 'badge-green' :
-                          idea.status === 'scripted' ? 'badge-blue' : 'badge-amber'
-                        }`}>
-                          {idea.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          <button 
-                            className="btn btn-sm btn-primary"
-                            onClick={() => {
-                              setSelectedIdeaId(idea.id);
-                              setActiveTab('scripts');
-                            }}
-                          >
-                            Script Studio
-                          </button>
-                          <button 
-                            className="btn btn-sm btn-danger"
-                            onClick={() => handleDeleteIdea(idea.id)}
-                          >
-                            <Trash2 size={12}/>
-                          </button>
-                        </div>
+                  {ideas.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                        No ideas on the board yet. Add your own topic above or seed the pilot curriculum from the Pilot tab!
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    ideas.map((idea) => (
+                      <tr key={idea.id}>
+                        <td>
+                          <strong>{idea.question}</strong>
+                          {idea.original_angle && (
+                            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                              Angle: {idea.original_angle}
+                            </div>
+                          )}
+                        </td>
+                        <td><span className="badge badge-purple">{idea.pillar}</span></td>
+                        <td><span className="badge badge-blue">{idea.editorial_fit_score}/100</span></td>
+                        <td>
+                          <span className={`badge ${
+                            idea.status === 'produced' ? 'badge-green' :
+                            idea.status === 'scripted' ? 'badge-blue' : 'badge-amber'
+                          }`}>
+                            {idea.status}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button 
+                              className="btn btn-sm btn-primary"
+                              onClick={() => {
+                                setSelectedIdeaId(idea.id);
+                                setActiveTab('scripts');
+                              }}
+                            >
+                              Script Studio
+                            </button>
+                            <button 
+                              className="btn btn-sm btn-danger"
+                              onClick={() => handleDeleteIdea(idea.id)}
+                            >
+                              <Trash2 size={12}/>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1230,143 +1316,154 @@ export default function App() {
         {/* TAB 6: SCRIPT & STORYBOARD STUDIO */}
         {activeTab === 'scripts' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {/* Idea Selection Header */}
-            <div className="card" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-              <div>
-                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Active Idea:</span>
-                <select 
-                  className="form-select"
-                  style={{ marginLeft: '0.5rem', fontWeight: 600, maxWidth: '400px' }}
-                  value={selectedIdeaId}
-                  onChange={(e) => setSelectedIdeaId(e.target.value)}
-                >
-                  {ideas.map(i => (
-                    <option key={i.id} value={i.id}>{i.question}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <button className="btn btn-secondary" onClick={handleDraftScript} disabled={loading}>
-                  <RefreshCw size={14}/> {currentScript ? 'Regenerate Draft' : 'Generate Script Draft'}
+            {ideas.length === 0 ? (
+              <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: '#94a3b8' }}>
+                <p style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>No ideas available to script yet.</p>
+                <button className="btn btn-primary" onClick={() => setActiveTab('ideas')}>
+                  Go to Idea Board
                 </button>
-                {currentScript && (
-                  <>
-                    <button className="btn btn-primary" onClick={handleSaveScriptEdits} disabled={loading}>
-                      Save Edits
-                    </button>
-                    <button className="btn btn-secondary" onClick={handleGenerateAssets} disabled={loading}>
-                      Generate Media Assets
-                    </button>
-                    <button className="btn btn-success" onClick={handleRenderVideo} disabled={loading}>
-                      <Film size={14}/> Render Video
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Script Editor Body */}
-            {currentScript ? (
-              <div className="grid-2">
-                {/* Left: Narration & Claims */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  <div className="card">
-                    <div className="card-header">
-                      <div className="card-title">Spoken Narration (35–60s)</div>
-                      <span className="badge badge-blue">Version {currentScript.version}</span>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Learning Goal:</label>
-                      <input 
-                        type="text" 
-                        className="form-input"
-                        value={currentScript.learning_goal || ''}
-                        onChange={(e) => setCurrentScript({ ...currentScript, learning_goal: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Title Options:</label>
-                      <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                        {currentScript.title_options?.map((t: string, idx: number) => (
-                          <li key={idx} style={{ fontSize: '0.85rem', color: '#93c5fd' }}>• {t}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Full Narration Text:</label>
-                      <textarea 
-                        className="form-textarea" 
-                        rows={7}
-                        value={currentScript.narration}
-                        onChange={(e) => setCurrentScript({ ...currentScript, narration: e.target.value })}
-                      />
-                      <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                        Word count: {currentScript.narration.split(' ').length} words (approx. {Math.round(currentScript.narration.split(' ').length / 2.5)} seconds)
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Factual Claims & Verification */}
-                  <div className="card">
-                    <div className="card-header">
-                      <div className="card-title"><CheckCircle size={18}/> Factual Claims Check</div>
-                      <button className="btn btn-sm btn-secondary" onClick={handleVerifyClaims} disabled={loading}>
-                        Verify Claims
-                      </button>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {currentScript.claims?.map((c: any, idx: number) => (
-                        <div key={idx} style={{ background: '#111827', padding: '0.6rem', borderRadius: '6px', fontSize: '0.82rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
-                            <span style={{ fontWeight: 'bold' }}>Claim #{idx + 1}</span>
-                            <span className={`badge ${c.verification_status === 'verified' ? 'badge-green' : 'badge-amber'}`}>
-                              {c.verification_status}
-                            </span>
-                          </div>
-                          <p style={{ color: '#cbd5e1' }}>{c.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right: 4-Scene Storyboard */}
-                <div className="card">
-                  <div className="card-header">
-                    <div className="card-title">4-Scene Storyboard (9:16 Shorts)</div>
-                    <span className="badge badge-purple">{currentScript.scenes?.length || 0} Scenes</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {currentScript.scenes?.map((scene: any, idx: number) => (
-                      <div key={idx} style={{ border: '1px solid #334155', borderRadius: '8px', padding: '0.75rem', background: '#111827' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem' }}>
-                          <span style={{ fontWeight: 600, color: '#60a5fa' }}>Scene {idx + 1} ({scene.target_duration_seconds}s)</span>
-                          <span style={{ color: '#94a3b8' }}>Banner: "{scene.on_screen_text}"</span>
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: '#e2e8f0', marginBottom: '0.4rem' }}>
-                          <strong>Visual Brief:</strong> {scene.visual_brief}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic' }}>
-                          Spoken: "{scene.narration_segment}"
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             ) : (
-              <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-                <p style={{ color: '#94a3b8', marginBottom: '1rem' }}>No script drafted for this idea yet.</p>
-                <button className="btn btn-primary" onClick={handleDraftScript} disabled={loading}>
-                  Generate Sourced Script Draft
-                </button>
-              </div>
+              <>
+                {/* Idea Selection Header */}
+                <div className="card" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Active Idea:</span>
+                    <select 
+                      className="form-select"
+                      style={{ marginLeft: '0.5rem', fontWeight: 600, maxWidth: '400px' }}
+                      value={selectedIdeaId}
+                      onChange={(e) => setSelectedIdeaId(e.target.value)}
+                    >
+                      {ideas.map(i => (
+                        <option key={i.id} value={i.id}>{i.question}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button className="btn btn-secondary" onClick={handleDraftScript} disabled={loading}>
+                      <RefreshCw size={14}/> {currentScript ? 'Regenerate Draft' : 'Generate Script Draft'}
+                    </button>
+                    {currentScript && (
+                      <>
+                        <button className="btn btn-primary" onClick={handleSaveScriptEdits} disabled={loading}>
+                          Save Edits
+                        </button>
+                        <button className="btn btn-secondary" onClick={handleGenerateAssets} disabled={loading}>
+                          Generate Media Assets
+                        </button>
+                        <button className="btn btn-success" onClick={handleRenderVideo} disabled={loading}>
+                          <Film size={14}/> Render Video
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Script Editor Body */}
+                {currentScript ? (
+                  <div className="grid-2">
+                    {/* Left: Narration & Claims */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                      <div className="card">
+                        <div className="card-header">
+                          <div className="card-title">Spoken Narration (35–60s)</div>
+                          <span className="badge badge-blue">Version {currentScript.version}</span>
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">Learning Goal:</label>
+                          <input 
+                            type="text" 
+                            className="form-input"
+                            value={currentScript.learning_goal || ''}
+                            onChange={(e) => setCurrentScript({ ...currentScript, learning_goal: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">Title Options:</label>
+                          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                            {currentScript.title_options?.map((t: string, idx: number) => (
+                              <li key={idx} style={{ fontSize: '0.85rem', color: '#93c5fd' }}>• {t}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">Full Narration Text:</label>
+                          <textarea 
+                            className="form-textarea" 
+                            rows={7}
+                            value={currentScript.narration}
+                            onChange={(e) => setCurrentScript({ ...currentScript, narration: e.target.value })}
+                          />
+                          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                            Word count: {currentScript.narration.split(' ').length} words (approx. {Math.round(currentScript.narration.split(' ').length / 2.5)} seconds)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Factual Claims & Verification */}
+                      <div className="card">
+                        <div className="card-header">
+                          <div className="card-title"><CheckCircle size={18}/> Factual Claims Check</div>
+                          <button className="btn btn-sm btn-secondary" onClick={handleVerifyClaims} disabled={loading}>
+                            Verify Claims
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {currentScript.claims?.map((c: any, idx: number) => (
+                            <div key={idx} style={{ background: '#111827', padding: '0.6rem', borderRadius: '6px', fontSize: '0.82rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                                <span style={{ fontWeight: 'bold' }}>Claim #{idx + 1}</span>
+                                <span className={`badge ${c.verification_status === 'verified' ? 'badge-green' : 'badge-amber'}`}>
+                                  {c.verification_status}
+                                </span>
+                              </div>
+                              <p style={{ color: '#cbd5e1' }}>{c.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: 4-Scene Storyboard */}
+                    <div className="card">
+                      <div className="card-header">
+                        <div className="card-title">4-Scene Storyboard (9:16 Shorts)</div>
+                        <span className="badge badge-purple">{currentScript.scenes?.length || 0} Scenes</span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {currentScript.scenes?.map((scene: any, idx: number) => (
+                          <div key={idx} style={{ border: '1px solid #334155', borderRadius: '8px', padding: '0.75rem', background: '#111827' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem' }}>
+                              <span style={{ fontWeight: 600, color: '#60a5fa' }}>Scene {idx + 1} ({scene.target_duration_seconds}s)</span>
+                              <span style={{ color: '#94a3b8' }}>Banner: "{scene.on_screen_text}"</span>
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#e2e8f0', marginBottom: '0.4rem' }}>
+                              <strong>Visual Brief:</strong> {scene.visual_brief}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                              Spoken: "{scene.narration_segment}"
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
+                    <p style={{ color: '#94a3b8', marginBottom: '1rem' }}>No script drafted for this idea yet.</p>
+                    <button className="btn btn-primary" onClick={handleDraftScript} disabled={loading}>
+                      Generate Sourced Script Draft
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -1394,7 +1491,7 @@ export default function App() {
                   />
                   <div className="shorts-overlay-badge">ClearTech Minute</div>
                   <div className="shorts-captions-overlay">
-                    {currentScript?.scenes?.[0]?.on_screen_text || 'An API is like a waiter'}
+                    {currentScript?.scenes?.[0]?.on_screen_text || 'Render video to preview'}
                   </div>
                 </div>
 
@@ -1421,16 +1518,16 @@ export default function App() {
 
                   <div style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                     <div>
-                      <strong>Video Title:</strong> {currentScript?.title_options?.[0] || 'Shorts Video'}
+                      <strong>Video Title:</strong> {currentScript?.title_options?.[0] || 'No video rendered yet'}
                     </div>
                     <div>
                       <strong>Final Payload Hash:</strong>{' '}
                       <code style={{ background: '#0f172a', padding: '2px 6px', borderRadius: '4px', color: '#60a5fa' }}>
-                        {videoVersion?.final_hash || 'e7fad9fb8a5be07d'}
+                        {videoVersion?.final_hash || 'None (Render video first)'}
                       </code>
                     </div>
                     <div>
-                      <strong>Total Duration:</strong> {videoVersion?.duration_seconds || 40} seconds
+                      <strong>Total Duration:</strong> {videoVersion?.duration_seconds ? `${videoVersion.duration_seconds} seconds` : 'N/A'}
                     </div>
                     <div>
                       <strong>Subtitles / Captions:</strong> WebVTT file generated & synced
@@ -1661,7 +1758,12 @@ export default function App() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                {commentsList.map((comm) => (
+                {commentsList.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                    No viewer comments found. When viewers comment on published YouTube Shorts, they will appear here for review and educational AI drafting.
+                  </div>
+                ) : (
+                  commentsList.map((comm) => (
                   <div key={comm.id} style={{ border: '1px solid #334155', borderRadius: '8px', padding: '1rem', background: '#111827' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                       <div>
@@ -1719,7 +1821,8 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                ))}
+                ))
+              )}
               </div>
             </div>
           </div>
@@ -1765,7 +1868,10 @@ export default function App() {
                   <div className="card-title"><Shield size={18}/> Security Audit Log</div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '240px', overflowY: 'auto' }}>
-                  {auditEvents.map((evt) => (
+                  {auditEvents.length === 0 ? (
+                    <div style={{ color: '#94a3b8', fontSize: '0.82rem', padding: '0.5rem' }}>No audit events logged.</div>
+                  ) : (
+                    auditEvents.map((evt) => (
                     <div key={evt.id} style={{ background: '#111827', padding: '0.5rem', borderRadius: '4px', fontSize: '0.78rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', color: '#60a5fa' }}>
                         <span>{evt.action}</span>
@@ -1773,7 +1879,8 @@ export default function App() {
                       </div>
                       <div style={{ color: '#cbd5e1' }}>Actor: {evt.actor} • Resource: {evt.resource}</div>
                     </div>
-                  ))}
+                  ))
+                )}
                 </div>
               </div>
             </div>
@@ -1794,15 +1901,23 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {budgetUsage?.recent_ledger?.map((item: any) => (
-                    <tr key={item.id}>
-                      <td><span className="badge badge-blue">{item.operation}</span></td>
-                      <td>${item.reserved_cost.toFixed(4)}</td>
-                      <td>${item.actual_cost.toFixed(4)}</td>
-                      <td style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{JSON.stringify(item.details)}</td>
-                      <td style={{ fontSize: '0.75rem' }}>{new Date(item.created_at).toLocaleString()}</td>
+                  {(!budgetUsage?.recent_ledger || budgetUsage.recent_ledger.length === 0) ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '1rem', color: '#94a3b8' }}>
+                        No API transactions recorded yet.
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    budgetUsage.recent_ledger.map((item: any) => (
+                      <tr key={item.id}>
+                        <td><span className="badge badge-blue">{item.operation}</span></td>
+                        <td>${item.reserved_cost.toFixed(4)}</td>
+                        <td>${item.actual_cost.toFixed(4)}</td>
+                        <td style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{JSON.stringify(item.details)}</td>
+                        <td style={{ fontSize: '0.75rem' }}>{new Date(item.created_at).toLocaleString()}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

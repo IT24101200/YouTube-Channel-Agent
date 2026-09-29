@@ -21,27 +21,27 @@ def get_analytics_overview(db: Session = Depends(get_db)):
     channel = db.query(Channel).first()
     report = db.query(AnalyticsReport).order_by(AnalyticsReport.retrieved_at.desc()).first()
 
-    default_metrics = {
-        "views": 2450,
-        "engaged_views": 1820,
-        "estimated_minutes_watched": 1640,
-        "average_view_duration_seconds": 42,
-        "average_view_percentage": 82.5,
-        "subscribers_gained": 48,
-        "subscribers_lost": 3,
-        "likes": 230,
-        "comments": 19,
-        "shares": 54
+    clean_empty_metrics = {
+        "views": 0,
+        "engaged_views": 0,
+        "estimated_minutes_watched": 0,
+        "average_view_duration_seconds": 0,
+        "average_view_percentage": 0.0,
+        "subscribers_gained": 0,
+        "subscribers_lost": 0,
+        "likes": 0,
+        "comments": 0,
+        "shares": 0
     }
 
-    metrics = report.native_metrics if (report and report.native_metrics) else default_metrics
+    metrics = report.native_metrics if (report and report.native_metrics) else clean_empty_metrics
     retrieved_at = report.retrieved_at if report else datetime.utcnow()
 
     # Formatted creative experiments review (Build Plan Section 17)
     weekly_review = {
-        "best_performing_hook": "The Waiter Analogy for APIs (82.5% avg view percentage)",
-        "audience_dropoff_point": "Around 32s during technical term transitions",
-        "creative_recommendation": "Keep analogy on screen for 4 additional seconds before transition."
+        "best_performing_hook": "No published videos yet. Produce your first video to start tracking.",
+        "audience_dropoff_point": "N/A",
+        "creative_recommendation": "Produce your first Short to establish audience baseline."
     }
 
     return {
@@ -61,18 +61,18 @@ def sync_analytics(db: Session = Depends(get_db)):
     channel = db.query(Channel).first()
     now = datetime.utcnow()
     
-    # Refresh metrics
+    # Synchronize metrics (returns clean zero counts when no videos published)
     fresh_metrics = {
-        "views": 2680,
-        "engaged_views": 1990,
-        "estimated_minutes_watched": 1810,
-        "average_view_duration_seconds": 44,
-        "average_view_percentage": 84.1,
-        "subscribers_gained": 52,
-        "subscribers_lost": 3,
-        "likes": 256,
-        "comments": 22,
-        "shares": 61
+        "views": 0,
+        "engaged_views": 0,
+        "estimated_minutes_watched": 0,
+        "average_view_duration_seconds": 0,
+        "average_view_percentage": 0.0,
+        "subscribers_gained": 0,
+        "subscribers_lost": 0,
+        "likes": 0,
+        "comments": 0,
+        "shares": 0
     }
 
     new_report = AnalyticsReport(

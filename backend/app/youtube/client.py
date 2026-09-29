@@ -37,20 +37,20 @@ class YouTubeClient:
             except Exception as e:
                 print(f"[YouTubeClient] API error: {e}. Falling back to cached channel info.")
 
-        # Default / demo channel info for local testing
+        # Default channel info for local testing
         return {
             "channel_id": settings.ALLOWED_CHANNEL_ID,
             "title": "ClearTech Minute",
             "custom_url": "@ClearTechMinute",
-            "subscriber_count": "142",
-            "video_count": "3",
-            "thumbnail": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&h=100&fit=crop"
+            "subscriber_count": "0",
+            "video_count": "0",
+            "thumbnail": ""
         }
 
     def list_existing_videos(self) -> List[Dict[str, Any]]:
         """
         Import existing channel videos (Build Plan Section 4 & 20).
-        Allows owner to view existing videos and open them in YouTube Studio.
+        Returns empty list when no existing videos have been published yet.
         """
         if self.is_real:
             try:
@@ -82,27 +82,8 @@ class YouTubeClient:
             except Exception as e:
                 print(f"[YouTubeClient] Search list error: {e}")
 
-        # Realistic starter sample of existing channel videos for testing import
-        return [
-            {
-                "video_id": "yt_sample_01",
-                "title": "Why Can an AI Confidently Hallucinate? #Shorts",
-                "description": "Understanding why large language models predict words rather than verifying facts.",
-                "published_at": "2026-09-20T10:00:00Z",
-                "thumbnail": "",
-                "studio_url": "https://studio.youtube.com/video/yt_sample_01/edit",
-                "watch_url": "https://www.youtube.com/shorts/yt_sample_01"
-            },
-            {
-                "video_id": "yt_sample_02",
-                "title": "What Actually Happens When You Scan a QR Code?",
-                "description": "How 2D optical barcodes translate instantly into web links and secure tokens.",
-                "published_at": "2026-09-24T14:30:00Z",
-                "thumbnail": "",
-                "studio_url": "https://studio.youtube.com/video/yt_sample_02/edit",
-                "watch_url": "https://www.youtube.com/shorts/yt_sample_02"
-            }
-        ]
+        # Returns empty list when no channel videos are found
+        return []
 
     def upload_private_video(
         self,
