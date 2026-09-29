@@ -39,6 +39,9 @@ export default function App() {
   const [newIdeaPillar, setNewIdeaPillar] = useState('Everyday Tech');
   const [scheduleTime, setScheduleTime] = useState('');
   const [replyDrafts, setReplyDrafts] = useState<{ [key: string]: string }>({});
+  const [briefName, setBriefName] = useState('');
+  const [briefHandle, setBriefHandle] = useState('');
+  const [briefPromise, setBriefPromise] = useState('');
 
   // Initial load
   useEffect(() => {
@@ -70,7 +73,15 @@ export default function App() {
   const fetchChannel = async () => {
     try {
       const res = await fetch(`${API_BASE}/channels/current`);
-      if (res.ok) setChannelData(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setChannelData(data);
+        if (data.brief) {
+          setBriefName(data.brief.name || '');
+          setBriefHandle(data.brief.handle || '');
+          setBriefPromise(data.brief.viewer_promise || '');
+        }
+      }
     } catch (e) {
       console.error(e);
     }
@@ -426,6 +437,33 @@ export default function App() {
     }
   };
 
+  const handleSaveBrief = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/channels/brief`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: briefName,
+          handle: briefHandle,
+          viewer_promise: briefPromise
+        })
+      });
+      if (res.ok) {
+        showMsg("Channel profile updated successfully!");
+        fetchChannel();
+        fetchBudget();
+      } else {
+        showMsg("Failed to update channel profile", "error");
+      }
+    } catch (e: any) {
+      showMsg(e.message || "Failed to update channel profile", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRunResearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTopicQuery.trim()) return;
@@ -644,9 +682,9 @@ export default function App() {
         <div className="header-brand">
           <div className="brand-icon">YT</div>
           <div>
-            <div className="brand-title">ClearTech Minute • Channel Agent</div>
+            <div className="brand-title">{channelData?.brief?.name || 'ClearTech Minute'} • Channel Agent</div>
             <div className="brand-subtitle">
-              Owner: ayeshmantha@local • Channel: {authStatus?.channel_info?.title || 'ClearTech Minute'} ({channelData?.channel?.youtube_channel_id || 'Connected'})
+              Owner: ayeshmantha@local • Channel: {authStatus?.is_connected ? (authStatus?.channel_info?.title || channelData?.brief?.name || 'Connected Channel') : 'Not Connected'}
             </div>
           </div>
         </div>
@@ -997,7 +1035,9 @@ export default function App() {
                   width: 68, 
                   height: 68, 
                   borderRadius: '50%', 
-                  background: 'linear-gradient(135deg, #ef4444, #3b82f6)', 
+                  background: authStatus?.is_connected 
+                    ? 'linear-gradient(135deg, #ef4444, #3b82f6)' 
+                    : '#334155', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center', 
@@ -1005,18 +1045,31 @@ export default function App() {
                   fontSize: '1.5rem',
                   fontWeight: 'bold'
                 }}>
-                  YT
+                  {authStatus?.is_connected ? 'YT' : '—'}
                 </div>
 
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ fontSize: '1.2rem', marginBottom: '0.2rem' }}>
-                    {authStatus?.channel_info?.title || 'ClearTech Minute'}
-                  </h3>
-                  <div style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                    <span>Handle: <strong>{authStatus?.channel_info?.custom_url || '@ClearTechMinute'}</strong></span>
-                    <span>Channel ID: <code>{authStatus?.channel_info?.channel_id || channelData?.channel?.youtube_channel_id}</code></span>
-                    <span>Subscribers: <strong>{authStatus?.channel_info?.subscriber_count ?? '0'}</strong></span>
-                  </div>
+                  {authStatus?.is_connected ? (
+                    <>
+                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.2rem' }}>
+                        {authStatus?.channel_info?.title || channelData?.brief?.name || 'Connected Channel'}
+                      </h3>
+                      <div style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        <span>Handle: <strong>{authStatus?.channel_info?.custom_url || channelData?.brief?.handle || '—'}</strong></span>
+                        <span>Channel ID: <code>{authStatus?.channel_info?.channel_id || channelData?.channel?.youtube_channel_id}</code></span>
+                        <span>Subscribers: <strong>{authStatus?.channel_info?.subscriber_count ?? '0'}</strong></span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.2rem', color: '#cbd5e1' }}>
+                        No Channel Connected
+                      </h3>
+                      <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                        No YouTube channel is currently linked. Click <strong>Connect Channel</strong> to authorize your YouTube account or start local channel mode.
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1043,6 +1096,58 @@ export default function App() {
               <div className="alert alert-info" style={{ marginTop: '0.75rem' }}>
                 <strong>Phase 4 Compliance:</strong> In accordance with YouTube API developer policies, test uploads from developer applications are uploaded strictly with <code>privacyStatus: private</code>. You can review and publish them inside desktop YouTube Studio.
               </div>
+            </div>
+
+            {/* Channel Profile & Editorial Brand */}
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">Channel Profile & Brand Settings</div>
+                <span className="badge badge-purple">Editorial Profile</span>
+              </div>
+              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1rem' }}>
+                Customize your channel name, handle, and audience promise. This controls what name and branding is used across script drafts and metadata.
+              </p>
+              <form onSubmit={handleSaveBrief} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                    <label className="form-label">Channel Display Name:</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      value={briefName}
+                      onChange={(e) => setBriefName(e.target.value)}
+                      placeholder="e.g. ClearTech Minute or My Tech Shorts"
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                    <label className="form-label">Channel Handle:</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      value={briefHandle}
+                      onChange={(e) => setBriefHandle(e.target.value)}
+                      placeholder="e.g. @MyChannel"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Viewer Promise (Channel Description):</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={briefPromise}
+                    onChange={(e) => setBriefPromise(e.target.value)}
+                    placeholder="e.g. One useful technology idea, explained clearly in about a minute."
+                  />
+                </div>
+
+                <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }} disabled={loading}>
+                  Save Channel Profile
+                </button>
+              </form>
             </div>
 
             {/* Imported Channel Videos (Build Plan Section 4 & 20) */}
