@@ -1,0 +1,46 @@
+# YouTube Channel Agent .gitignore
+# Implements Build Plan Section 11
+
+# Secrets & Environment variables
+.env
+*.env.local
+
+# Database files
+*.db
+*.sqlite3
+app.db
+
+# Generated media and assets (stored locally, excluded from git)
+data/
+data/media/
+backend/data/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/**/__pycache__/
+venv/
+env/
+.venv/
+
+# Node & Frontend dependencies and builds
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
