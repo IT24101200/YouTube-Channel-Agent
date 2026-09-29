@@ -2,16 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { 
   Play, Pause, Shield, CheckCircle, 
   DollarSign, BookOpen, Film, Video, Calendar, 
-  RefreshCw, Plus, Check, Trash2, ArrowRight
+  RefreshCw, Plus, Check, Trash2, ArrowRight,
+  ExternalLink, Upload, Unlink, Radio
 } from 'lucide-react';
 
 const API_BASE = "http://localhost:8000/api";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'research' | 'ideas' | 'scripts' | 'review' | 'budget'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'research' | 'ideas' | 'scripts' | 'review' | 'channel' | 'budget'>('overview');
   
   // Data states
   const [channelData, setChannelData] = useState<any>(null);
+  const [authStatus, setAuthStatus] = useState<any>(null);
+  const [channelVideos, setChannelVideos] = useState<any[]>([]);
   const [ideas, setIdeas] = useState<any[]>([]);
   const [selectedIdeaId, setSelectedIdeaId] = useState<string>('');
   const [currentScript, setCurrentScript] = useState<any>(null);
@@ -33,10 +36,12 @@ export default function App() {
   // Initial load
   useEffect(() => {
     fetchChannel();
+    fetchAuthStatus();
     fetchIdeas();
     fetchResearch();
     fetchBudget();
     fetchPublishing();
+    fetchChannelVideos();
   }, []);
 
   // When selected idea changes, load its script
@@ -56,6 +61,27 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/channels/current`);
       if (res.ok) setChannelData(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchAuthStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/youtube/status`);
+      if (res.ok) setAuthStatus(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchChannelVideos = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/youtube/videos`);
+      if (res.ok) {
+        const data = await res.json();
+        setChannelVideos(data.videos || []);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -118,6 +144,64 @@ export default function App() {
       if (res.ok) setPublishingJobs(await res.json());
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  // Phase 4: Channel Actions
+  const handleConnectChannel = async (mode: 'standard' | 'demo' = 'standard') => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/youtube/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'redirect_required' && data.auth_url) {
+          window.location.href = data.auth_url;
+        } else {
+          showMsg(data.message || 'Channel connected successfully!');
+          fetchAuthStatus();
+          fetchChannel();
+          fetchChannelVideos();
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisconnectChannel = async () => {
+    if (!confirm('Are you sure you want to disconnect this YouTube channel?')) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/youtube/disconnect`, { method: 'POST' });
+      if (res.ok) {
+        showMsg('Channel disconnected successfully');
+        fetchAuthStatus();
+        fetchChannel();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUploadPrivate = async (jobId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/publishing/jobs/${jobId}/upload-private`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        showMsg(`Uploaded to YouTube as Private! Video ID: ${data.remote_video_id}`);
+        fetchPublishing();
+        fetchBudget();
+      } else {
+        const err = await res.json();
+        showMsg(err.detail || 'Upload failed', 'error');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -326,7 +410,6 @@ export default function App() {
       const res = await fetch(`${API_BASE}/video-versions/${videoVersion.id}/approve`, { method: 'POST' });
       if (res.ok) {
         showMsg(`Approved! Bound to SHA256 hash: ${videoVersion.final_hash}`);
-        // Refresh version
         const vres = await fetch(`${API_BASE}/video-versions/${videoVersion.id}`);
         if (vres.ok) setVideoVersion(await vres.json());
       }
@@ -384,7 +467,7 @@ export default function App() {
           <div>
             <div className="brand-title">ClearTech Minute • Channel Agent</div>
             <div className="brand-subtitle">
-              Owner: ayeshmantha@local • Channel ID: {channelData?.channel?.youtube_channel_id || 'UC_DEMO'}
+              Owner: ayeshmantha@local • Channel: {authStatus?.channel_info?.title || 'ClearTech Minute'} ({channelData?.channel?.youtube_channel_id || 'Connected'})
             </div>
           </div>
         </div>
@@ -441,6 +524,12 @@ export default function App() {
           onClick={() => setActiveTab('overview')}
         >
           <Film size={16}/> Overview & Health
+        </button>
+        <button 
+          className={`nav-tab ${activeTab === 'channel' ? 'active' : ''}`}
+          onClick={() => setActiveTab('channel')}
+        >
+          <Radio size={16}/> YouTube Channel (Phase 4)
         </button>
         <button 
           className={`nav-tab ${activeTab === 'research' ? 'active' : ''}`}
@@ -522,9 +611,9 @@ export default function App() {
               <div className="card">
                 <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Scheduled Releases</span>
                 <div style={{ fontSize: '1.75rem', fontWeight: 'bold' }}>
-                  {publishingJobs.filter(j => j.state === 'scheduled' || j.state === 'ready_for_upload').length}
+                  {publishingJobs.filter(j => j.state === 'scheduled' || j.state === 'ready_for_upload' || j.state === 'uploaded_private').length}
                 </div>
-                <span style={{ fontSize: '0.75rem', color: '#fbbf24' }}>Approved batches</span>
+                <span style={{ fontSize: '0.75rem', color: '#fbbf24' }}>YouTube ready</span>
               </div>
             </div>
 
@@ -592,7 +681,126 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: TOPIC RESEARCH */}
+        {/* TAB 2: YOUTUBE CHANNEL (PHASE 4) */}
+        {activeTab === 'channel' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title"><Radio size={18}/> Connected Channel Information (Phase 4)</div>
+                <span className={`badge ${authStatus?.is_connected ? 'badge-green' : 'badge-amber'}`}>
+                  {authStatus?.is_connected ? 'Connected & Authorized' : 'Not Connected'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ 
+                  width: 68, 
+                  height: 68, 
+                  borderRadius: '50%', 
+                  background: 'linear-gradient(135deg, #ef4444, #3b82f6)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  color: 'white',
+                  fontSize: '1.5rem',
+                  fontWeight: 'bold'
+                }}>
+                  YT
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontSize: '1.2rem', marginBottom: '0.2rem' }}>
+                    {authStatus?.channel_info?.title || 'ClearTech Minute'}
+                  </h3>
+                  <div style={{ fontSize: '0.85rem', color: '#94a3b8', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                    <span>Handle: <strong>{authStatus?.channel_info?.custom_url || '@ClearTechMinute'}</strong></span>
+                    <span>Channel ID: <code>{authStatus?.channel_info?.channel_id || channelData?.channel?.youtube_channel_id}</code></span>
+                    <span>Subscribers: <strong>{authStatus?.channel_info?.subscriber_count || '142'}</strong></span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {!authStatus?.is_connected ? (
+                    <button className="btn btn-primary" onClick={() => handleConnectChannel('demo')} disabled={loading}>
+                      Connect Channel
+                    </button>
+                  ) : (
+                    <button className="btn btn-danger btn-sm" onClick={handleDisconnectChannel} disabled={loading}>
+                      <Unlink size={14}/> Disconnect Channel
+                    </button>
+                  )}
+                  <a 
+                    href="https://studio.youtube.com" 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Open YouTube Studio <ExternalLink size={14}/>
+                  </a>
+                </div>
+              </div>
+
+              <div className="alert alert-info" style={{ marginTop: '0.75rem' }}>
+                <strong>Phase 4 Compliance:</strong> In accordance with YouTube API developer policies, test uploads from developer applications are uploaded strictly with <code>privacyStatus: private</code>. You can review and publish them inside desktop YouTube Studio.
+              </div>
+            </div>
+
+            {/* Imported Channel Videos (Build Plan Section 4 & 20) */}
+            <div className="card table-container">
+              <div className="card-header">
+                <div className="card-title">Existing Channel Videos (Imported via YouTube API)</div>
+                <button className="btn btn-sm btn-secondary" onClick={fetchChannelVideos}>
+                  <RefreshCw size={12}/> Refresh List
+                </button>
+              </div>
+
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Video Title</th>
+                    <th>Published Date</th>
+                    <th>YouTube Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {channelVideos.map((vid) => (
+                    <tr key={vid.video_id}>
+                      <td>
+                        <strong>{vid.title}</strong>
+                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                          {vid.description}
+                        </div>
+                      </td>
+                      <td>{new Date(vid.published_at).toLocaleDateString()}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <a 
+                            href={vid.studio_url} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="btn btn-sm btn-secondary"
+                          >
+                            Studio Edit <ExternalLink size={12}/>
+                          </a>
+                          <a 
+                            href={vid.watch_url} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="btn btn-sm btn-primary"
+                          >
+                            Watch <ExternalLink size={12}/>
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: TOPIC RESEARCH */}
         {activeTab === 'research' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="card">
@@ -655,7 +863,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: IDEA BOARD */}
+        {/* TAB 4: IDEA BOARD */}
         {activeTab === 'ideas' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Create Idea Form */}
@@ -765,7 +973,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: SCRIPT & STORYBOARD STUDIO */}
+        {/* TAB 5: SCRIPT & STORYBOARD STUDIO */}
         {activeTab === 'scripts' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Idea Selection Header */}
@@ -909,7 +1117,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 5: REVIEW & PUBLISHING */}
+        {/* TAB 6: REVIEW & PUBLISHING */}
         {activeTab === 'review' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="grid-2">
@@ -1019,7 +1227,7 @@ export default function App() {
             {/* Publishing Queue Table */}
             <div className="card table-container">
               <div className="card-header">
-                <div className="card-title"><Calendar size={18}/> Publishing Queue & Release Calendar</div>
+                <div className="card-title"><Calendar size={18}/> Publishing Queue & YouTube Uploads</div>
               </div>
               <table className="data-table">
                 <thead>
@@ -1027,7 +1235,7 @@ export default function App() {
                     <th>Video Title</th>
                     <th>Scheduled For</th>
                     <th>Status</th>
-                    <th>Action</th>
+                    <th>YouTube Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1042,21 +1250,45 @@ export default function App() {
                         <td>{job.scheduled_publish_time ? new Date(job.scheduled_publish_time).toLocaleString() : 'Immediate'}</td>
                         <td>
                           <span className={`badge ${
+                            job.state === 'uploaded_private' ? 'badge-green' :
                             job.state === 'scheduled' ? 'badge-blue' :
-                            job.state === 'published' ? 'badge-green' : 'badge-amber'
+                            job.state === 'cancelled' ? 'badge-red' : 'badge-amber'
                           }`}>
                             {job.state}
                           </span>
                         </td>
                         <td>
-                          {job.state !== 'cancelled' && (
-                            <button 
-                              className="btn btn-sm btn-danger"
-                              onClick={() => handleCancelPublishingJob(job.id)}
-                            >
-                              Cancel Release
-                            </button>
-                          )}
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {job.state !== 'uploaded_private' && job.state !== 'cancelled' && (
+                              <button 
+                                className="btn btn-sm btn-primary"
+                                onClick={() => handleUploadPrivate(job.id)}
+                                disabled={loading}
+                              >
+                                <Upload size={12}/> Upload Private
+                              </button>
+                            )}
+
+                            {job.studio_url && (
+                              <a 
+                                href={job.studio_url} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="btn btn-sm btn-secondary"
+                              >
+                                Studio <ExternalLink size={12}/>
+                              </a>
+                            )}
+
+                            {job.state !== 'cancelled' && (
+                              <button 
+                                className="btn btn-sm btn-danger"
+                                onClick={() => handleCancelPublishingJob(job.id)}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1067,7 +1299,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: BUDGET & AUDIT */}
+        {/* TAB 7: BUDGET & AUDIT */}
         {activeTab === 'budget' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="grid-2">

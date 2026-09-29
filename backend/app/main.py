@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.init_db import init_db
 from app.api import (
+    routes_auth,
     routes_channels,
     routes_research,
     routes_ideas,
@@ -42,6 +43,7 @@ def health_check():
     return {"status": "ok", "app": settings.APP_NAME, "env": settings.APP_ENV}
 
 # Include all API route controllers
+app.include_router(routes_auth.router, prefix="/api")
 app.include_router(routes_channels.router, prefix="/api")
 app.include_router(routes_research.router, prefix="/api")
 app.include_router(routes_ideas.router, prefix="/api")
