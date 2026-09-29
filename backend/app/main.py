@@ -13,7 +13,9 @@ from app.api import (
     routes_scripts,
     routes_media,
     routes_publishing,
-    routes_budget
+    routes_budget,
+    routes_analytics,
+    routes_comments
 )
 
 # Initialize application
@@ -51,6 +53,8 @@ app.include_router(routes_scripts.router, prefix="/api")
 app.include_router(routes_media.router, prefix="/api")
 app.include_router(routes_publishing.router, prefix="/api")
 app.include_router(routes_budget.router, prefix="/api")
+app.include_router(routes_analytics.router, prefix="/api")
+app.include_router(routes_comments.router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn

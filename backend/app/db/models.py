@@ -223,3 +223,30 @@ class AuditEvent(Base):
     resource = Column(String, nullable=False)
     details = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class Comment(Base):
+    """Viewer comments and proposed AI replies (Build Plan Section 5 & 12)."""
+    __tablename__ = "comments"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    remote_comment_id = Column(String, unique=True, default=generate_uuid)
+    video_id = Column(String, default="")
+    video_title = Column(String, default="")
+    author_display_name = Column(String, default="Viewer")
+    text_snapshot = Column(Text, nullable=False)
+    proposed_reply = Column(Text, default="")
+    moderation_state = Column(String, default="pending_review")  # pending_review, approved_reply, sent, dismissed
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class AnalyticsReport(Base):
+    """Native YouTube analytics snapshot reports (Build Plan Section 12 & 17)."""
+    __tablename__ = "analytics_reports"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    channel_id = Column(String, nullable=False)
+    requested_range = Column(String, default="last_28_days")
+    available_range = Column(String, default="last_28_days")
+    report_type = Column(String, default="native_overview")
+    native_metrics = Column(JSON, default=dict)
+    retrieved_at = Column(DateTime, default=datetime.utcnow)
+

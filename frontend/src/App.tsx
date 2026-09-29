@@ -3,13 +3,14 @@ import {
   Play, Pause, Shield, CheckCircle, 
   DollarSign, BookOpen, Film, Video, Calendar, 
   RefreshCw, Plus, Check, Trash2, ArrowRight,
-  ExternalLink, Upload, Unlink, Radio
+  ExternalLink, Upload, Unlink, Radio,
+  BarChart3, MessageSquare, Send, ThumbsUp, Eye, Users
 } from 'lucide-react';
 
 const API_BASE = "http://localhost:8000/api";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'research' | 'ideas' | 'scripts' | 'review' | 'channel' | 'budget'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'research' | 'ideas' | 'scripts' | 'review' | 'channel' | 'analytics' | 'comments' | 'budget'>('overview');
   
   // Data states
   const [channelData, setChannelData] = useState<any>(null);
@@ -23,6 +24,8 @@ export default function App() {
   const [budgetUsage, setBudgetUsage] = useState<any>(null);
   const [auditEvents, setAuditEvents] = useState<any[]>([]);
   const [videoVersion, setVideoVersion] = useState<any>(null);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [commentsList, setCommentsList] = useState<any[]>([]);
 
   // Form & action states
   const [loading, setLoading] = useState(false);
@@ -32,6 +35,7 @@ export default function App() {
   const [newIdeaAngle, setNewIdeaAngle] = useState('');
   const [newIdeaPillar, setNewIdeaPillar] = useState('Everyday Tech');
   const [scheduleTime, setScheduleTime] = useState('');
+  const [replyDrafts, setReplyDrafts] = useState<{ [key: string]: string }>({});
 
   // Initial load
   useEffect(() => {
@@ -42,6 +46,8 @@ export default function App() {
     fetchBudget();
     fetchPublishing();
     fetchChannelVideos();
+    fetchAnalytics();
+    fetchComments();
   }, []);
 
   // When selected idea changes, load its script
@@ -81,6 +87,33 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setChannelVideos(data.videos || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/analytics/overview`);
+      if (res.ok) setAnalyticsData(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchComments = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        setCommentsList(data);
+        // Prepopulate reply drafts
+        const draftMap: any = {};
+        data.forEach((c: any) => {
+          draftMap[c.id] = c.proposed_reply || '';
+        });
+        setReplyDrafts(draftMap);
       }
     } catch (e) {
       console.error(e);
@@ -147,6 +180,76 @@ export default function App() {
     }
   };
 
+  // Phase 6: Maintenance Actions (Analytics & Comments)
+  const handleSyncAnalytics = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/analytics/sync`, { method: 'POST' });
+      if (res.ok) {
+        showMsg('YouTube Analytics refreshed successfully!');
+        fetchAnalytics();
+        fetchBudget();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDraftAICommentReply = async (commentId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/comments/${commentId}/draft-reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ custom_instructions: 'Friendly and educational' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showMsg('AI reply drafted! You can edit it before sending.');
+        setReplyDrafts(prev => ({ ...prev, [commentId]: data.proposed_reply }));
+        fetchComments();
+        fetchBudget();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendCommentReply = async (commentId: string) => {
+    const text = replyDrafts[commentId];
+    if (!text || !text.trim()) {
+      showMsg('Please write a reply before sending.', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/comments/${commentId}/send-reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply_text: text })
+      });
+      if (res.ok) {
+        showMsg('Reply sent and logged in audit history!');
+        fetchComments();
+        fetchBudget();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDismissComment = async (commentId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/comments/${commentId}/dismiss`, { method: 'POST' });
+      if (res.ok) {
+        showMsg('Comment dismissed');
+        fetchComments();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Phase 4: Channel Actions
   const handleConnectChannel = async (mode: 'standard' | 'demo' = 'standard') => {
     setLoading(true);
@@ -205,7 +308,7 @@ export default function App() {
     }
   };
 
-  // Actions
+  // General Actions
   const handleUpdateMode = async (mode: string) => {
     setLoading(true);
     try {
@@ -529,7 +632,7 @@ export default function App() {
           className={`nav-tab ${activeTab === 'channel' ? 'active' : ''}`}
           onClick={() => setActiveTab('channel')}
         >
-          <Radio size={16}/> YouTube Channel (Phase 4)
+          <Radio size={16}/> Channel Setup
         </button>
         <button 
           className={`nav-tab ${activeTab === 'research' ? 'active' : ''}`}
@@ -547,13 +650,25 @@ export default function App() {
           className={`nav-tab ${activeTab === 'scripts' ? 'active' : ''}`}
           onClick={() => setActiveTab('scripts')}
         >
-          <Film size={16}/> Script & Storyboard Studio
+          <Film size={16}/> Script Studio
         </button>
         <button 
           className={`nav-tab ${activeTab === 'review' ? 'active' : ''}`}
           onClick={() => setActiveTab('review')}
         >
           <Video size={16}/> Review & Publishing
+        </button>
+        <button 
+          className={`nav-tab ${activeTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          <BarChart3 size={16}/> Analytics (Phase 6)
+        </button>
+        <button 
+          className={`nav-tab ${activeTab === 'comments' ? 'active' : ''}`}
+          onClick={() => setActiveTab('comments')}
+        >
+          <MessageSquare size={16}/> Comments & Q&A
         </button>
         <button 
           className={`nav-tab ${activeTab === 'budget' ? 'active' : ''}`}
@@ -1299,7 +1414,179 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 7: BUDGET & AUDIT */}
+        {/* TAB 7: ANALYTICS (PHASE 6) */}
+        {activeTab === 'analytics' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div className="card" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem' }}>Native YouTube Analytics Performance</h3>
+                <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                  Period: {analyticsData?.reporting_period} • Last refreshed: {analyticsData?.last_refresh ? new Date(analyticsData.last_refresh).toLocaleString() : 'Just now'}
+                </div>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={handleSyncAnalytics} disabled={loading}>
+                <RefreshCw size={14}/> Sync Analytics
+              </button>
+            </div>
+
+            {/* Native Metrics Cards */}
+            <div className="grid-4">
+              <div className="card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#60a5fa', fontSize: '0.85rem' }}>
+                  <Eye size={16}/> Total Views
+                </div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>
+                  {analyticsData?.metrics?.views?.toLocaleString() || 0}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  Engaged views: <strong>{analyticsData?.metrics?.engaged_views?.toLocaleString() || 0}</strong>
+                </span>
+              </div>
+
+              <div className="card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#34d399', fontSize: '0.85rem' }}>
+                  <Film size={16}/> Avg View Retention
+                </div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>
+                  {analyticsData?.metrics?.average_view_percentage || 0}%
+                </div>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  Avg duration: <strong>{analyticsData?.metrics?.average_view_duration_seconds || 0}s</strong>
+                </span>
+              </div>
+
+              <div className="card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#c084fc', fontSize: '0.85rem' }}>
+                  <Users size={16}/> Subscribers Gained
+                </div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>
+                  +{analyticsData?.metrics?.subscribers_gained || 0}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  Lost: {analyticsData?.metrics?.subscribers_lost || 0}
+                </span>
+              </div>
+
+              <div className="card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fbbf24', fontSize: '0.85rem' }}>
+                  <ThumbsUp size={16}/> Viewer Engagement
+                </div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>
+                  {analyticsData?.metrics?.likes || 0} Likes
+                </div>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                  {analyticsData?.metrics?.comments || 0} comments • {analyticsData?.metrics?.shares || 0} shares
+                </span>
+              </div>
+            </div>
+
+            {/* Weekly Creative Experiments Review (Build Plan Section 17) */}
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title"><BarChart3 size={18}/> Weekly Creative Review & Insights</div>
+                <span className="badge badge-purple">AI & Native Synthesis</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.88rem' }}>
+                <div>
+                  <strong>Best Performing Hook:</strong>
+                  <p style={{ color: '#60a5fa', marginTop: '0.2rem' }}>
+                    {analyticsData?.weekly_review?.best_performing_hook}
+                  </p>
+                </div>
+                <div>
+                  <strong>Drop-off Point Observation:</strong>
+                  <p style={{ color: '#cbd5e1', marginTop: '0.2rem' }}>
+                    {analyticsData?.weekly_review?.audience_dropoff_point}
+                  </p>
+                </div>
+                <div>
+                  <strong>Creative Recommendation for Next Batch:</strong>
+                  <p style={{ color: '#34d399', marginTop: '0.2rem' }}>
+                    {analyticsData?.weekly_review?.creative_recommendation}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 8: COMMENTS & COMMUNITY (PHASE 6) */}
+        {activeTab === 'comments' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title"><MessageSquare size={18}/> Viewer Comments & AI Reply Studio</div>
+                <button className="btn btn-sm btn-secondary" onClick={fetchComments}>
+                  <RefreshCw size={12}/> Refresh Comments
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {commentsList.map((comm) => (
+                  <div key={comm.id} style={{ border: '1px solid #334155', borderRadius: '8px', padding: '1rem', background: '#111827' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <div>
+                        <strong>{comm.author_display_name}</strong>
+                        <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginLeft: '0.5rem' }}>
+                          on "{comm.video_title}"
+                        </span>
+                      </div>
+                      <span className={`badge ${
+                        comm.moderation_state === 'sent' ? 'badge-green' :
+                        comm.moderation_state === 'approved_reply' ? 'badge-blue' : 'badge-amber'
+                      }`}>
+                        {comm.moderation_state.replace('_', ' ')}
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: '0.9rem', color: '#f8fafc', marginBottom: '0.75rem' }}>
+                      "{comm.text_snapshot}"
+                    </p>
+
+                    {/* Proposed Reply Area */}
+                    <div className="form-group" style={{ marginTop: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                        <label className="form-label">Drafted Reply (Editable):</label>
+                        <button 
+                          className="btn btn-sm btn-secondary"
+                          onClick={() => handleDraftAICommentReply(comm.id)}
+                          disabled={loading}
+                        >
+                          <RefreshCw size={12}/> Generate AI Reply
+                        </button>
+                      </div>
+                      <textarea 
+                        className="form-textarea"
+                        rows={2}
+                        value={replyDrafts[comm.id] || ''}
+                        onChange={(e) => setReplyDrafts({ ...replyDrafts, [comm.id]: e.target.value })}
+                        placeholder="Draft reply here..."
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                      <button 
+                        className="btn btn-sm btn-primary"
+                        onClick={() => handleSendCommentReply(comm.id)}
+                        disabled={loading}
+                      >
+                        <Send size={12}/> Send Reply to YouTube
+                      </button>
+                      <button 
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => handleDismissComment(comm.id)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 9: BUDGET & AUDIT */}
         {activeTab === 'budget' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="grid-2">

@@ -1,8 +1,7 @@
 # Database initialization and sample data seeding
 # Follows student rules: includes small amount of realistic sample data
-
 from app.db.database import engine, Base, SessionLocal
-from app.db.models import Owner, Channel, ChannelBrief, Idea, Script, EvidenceItem, ResearchRun
+from app.db.models import Owner, Channel, ChannelBrief, Idea, Script, EvidenceItem, ResearchRun, Comment, AnalyticsReport
 
 def init_db():
     """Create all tables and seed starter data if empty."""
@@ -197,7 +196,51 @@ def init_db():
             owner_edited=False
         )
         db.add(script1)
+
+        # 7. Seed Sample Viewer Comments (Build Plan Section 5 & 18)
+        comment1 = Comment(
+            remote_comment_id="c_view_01",
+            video_id=idea1.id,
+            video_title="What is an API in 45 Seconds?",
+            author_display_name="DevStudent99",
+            text_snapshot="Great waiter analogy! Can an API also send data back to the user or is it only one-way?",
+            proposed_reply="Great question! Yes, APIs work both ways: request (order) and response (food). Some APIs even push real-time updates like live scores!",
+            moderation_state="pending_review"
+        )
+        comment2 = Comment(
+            remote_comment_id="c_view_02",
+            video_id=idea1.id,
+            video_title="What is an API in 45 Seconds?",
+            author_display_name="Kavinda Tech",
+            text_snapshot="Could you explain REST vs GraphQL in simple terms next?",
+            proposed_reply="Added to our topic research list! We'll explain REST vs GraphQL using a menu vs buffet analogy soon!",
+            moderation_state="pending_review"
+        )
+        db.add_all([comment1, comment2])
+
+        # 8. Seed Baseline Native Analytics Snapshot (Build Plan Section 17)
+        report = AnalyticsReport(
+            channel_id=channel.id,
+            requested_range="last_28_days",
+            available_range="last_28_days",
+            report_type="native_overview",
+            native_metrics={
+                "views": 1840,
+                "engaged_views": 1220,
+                "estimated_minutes_watched": 1380,
+                "average_view_duration_seconds": 45,
+                "average_view_percentage": 78.4,
+                "subscribers_gained": 34,
+                "subscribers_lost": 2,
+                "likes": 188,
+                "comments": 14,
+                "shares": 42
+            }
+        )
+        db.add(report)
+
         db.commit()
 
     finally:
         db.close()
+
