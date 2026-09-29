@@ -4,13 +4,14 @@ import {
   DollarSign, BookOpen, Film, Video, Calendar, 
   RefreshCw, Plus, Check, Trash2, ArrowRight,
   ExternalLink, Upload, Unlink, Radio,
-  BarChart3, MessageSquare, Send, ThumbsUp, Eye, Users
+  BarChart3, MessageSquare, Send, ThumbsUp, Eye, Users,
+  CheckCircle2, XCircle, Award
 } from 'lucide-react';
 
 const API_BASE = "http://localhost:8000/api";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'research' | 'ideas' | 'scripts' | 'review' | 'channel' | 'analytics' | 'comments' | 'budget'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'pilot' | 'research' | 'ideas' | 'scripts' | 'review' | 'channel' | 'analytics' | 'comments' | 'budget'>('overview');
   
   // Data states
   const [channelData, setChannelData] = useState<any>(null);
@@ -26,6 +27,8 @@ export default function App() {
   const [videoVersion, setVideoVersion] = useState<any>(null);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [commentsList, setCommentsList] = useState<any[]>([]);
+  const [pilotGates, setPilotGates] = useState<any>(null);
+  const [curriculum, setCurriculum] = useState<any[]>([]);
 
   // Form & action states
   const [loading, setLoading] = useState(false);
@@ -48,6 +51,7 @@ export default function App() {
     fetchChannelVideos();
     fetchAnalytics();
     fetchComments();
+    fetchPilotData();
   }, []);
 
   // When selected idea changes, load its script
@@ -93,6 +97,17 @@ export default function App() {
     }
   };
 
+  const fetchPilotData = async () => {
+    try {
+      const gRes = await fetch(`${API_BASE}/pilot/gates`);
+      if (gRes.ok) setPilotGates(await gRes.json());
+      const cRes = await fetch(`${API_BASE}/pilot/curriculum`);
+      if (cRes.ok) setCurriculum(await cRes.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const fetchAnalytics = async () => {
     try {
       const res = await fetch(`${API_BASE}/analytics/overview`);
@@ -108,7 +123,6 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setCommentsList(data);
-        // Prepopulate reply drafts
         const draftMap: any = {};
         data.forEach((c: any) => {
           draftMap[c.id] = c.proposed_reply || '';
@@ -177,6 +191,22 @@ export default function App() {
       if (res.ok) setPublishingJobs(await res.json());
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  // Phase 7: Pilot Actions
+  const handleSeedCurriculum = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/pilot/seed-curriculum`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        showMsg(data.message || 'Curriculum seeded onto Idea Board!');
+        fetchIdeas();
+        fetchPilotData();
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -629,6 +659,12 @@ export default function App() {
           <Film size={16}/> Overview & Health
         </button>
         <button 
+          className={`nav-tab ${activeTab === 'pilot' ? 'active' : ''}`}
+          onClick={() => setActiveTab('pilot')}
+        >
+          <Award size={16}/> Pilot & Gates (Phase 7)
+        </button>
+        <button 
           className={`nav-tab ${activeTab === 'channel' ? 'active' : ''}`}
           onClick={() => setActiveTab('channel')}
         >
@@ -662,7 +698,7 @@ export default function App() {
           className={`nav-tab ${activeTab === 'analytics' ? 'active' : ''}`}
           onClick={() => setActiveTab('analytics')}
         >
-          <BarChart3 size={16}/> Analytics (Phase 6)
+          <BarChart3 size={16}/> Analytics
         </button>
         <button 
           className={`nav-tab ${activeTab === 'comments' ? 'active' : ''}`}
@@ -796,7 +832,110 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: YOUTUBE CHANNEL (PHASE 4) */}
+        {/* TAB 2: PILOT & AUTOMATION GATES (PHASE 7) */}
+        {activeTab === 'pilot' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* 8 Automation Readiness Gates Box */}
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title"><Award size={18}/> 8 Engineering Safety Gates for Bounded Automatic Mode</div>
+                <span className={`badge ${pilotGates?.all_gates_passed ? 'badge-green' : 'badge-amber'}`}>
+                  {pilotGates?.all_gates_passed ? 'Eligible for Automation' : 'Safety Review Required'}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.6 }}>
+                Before allowing unattended batch creation or bounded publishing, Build Plan Section 20 requires passing these 8 engineering verification checks:
+              </div>
+
+              <div className="grid-2" style={{ marginTop: '0.5rem' }}>
+                {pilotGates?.gates?.map((gate: any) => (
+                  <div key={gate.id} style={{ border: '1px solid #334155', borderRadius: '8px', padding: '0.75rem', background: '#111827' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>{gate.name}</span>
+                      {gate.passed ? (
+                        <span className="badge badge-green" style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                          <CheckCircle2 size={12}/> PASS
+                        </span>
+                      ) : (
+                        <span className="badge badge-red" style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                          <XCircle size={12}/> HOLD
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#cbd5e1' }}>{gate.requirement}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#60a5fa', marginTop: '0.2rem' }}>State: {gate.current_value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {pilotGates?.eligible_for_bounded_auto && channelData?.channel?.mode !== 'bounded_auto' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(16, 185, 129, 0.1)', padding: '0.75rem', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#6ee7b7' }}>
+                    All 8 engineering criteria verified! You can safely switch to Bounded Automatic mode.
+                  </span>
+                  <button className="btn btn-sm btn-success" onClick={() => handleUpdateMode('bounded_auto')}>
+                    Enable Bounded Auto
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 20-Topic First Month Curriculum */}
+            <div className="card table-container">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">20-Video First Month Curriculum (Build Plan Section 21)</div>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                    4 weeks of educational technology Shorts covering everyday tech, AI concepts, and digital safety.
+                  </div>
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={handleSeedCurriculum} disabled={loading}>
+                  <Plus size={14}/> Seed Full 20-Video Curriculum
+                </button>
+              </div>
+
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Week</th>
+                    <th>Topic Question</th>
+                    <th>Pillar</th>
+                    <th>Educational Visual Angle</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {curriculum.map((item, idx) => (
+                    <tr key={idx}>
+                      <td><span className="badge badge-blue">Week {item.week}</span></td>
+                      <td><strong>{item.question}</strong></td>
+                      <td><span className="badge badge-purple">{item.pillar}</span></td>
+                      <td style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>{item.angle}</td>
+                      <td>
+                        {item.idea_id ? (
+                          <button 
+                            className="btn btn-sm btn-primary"
+                            onClick={() => {
+                              setSelectedIdeaId(item.idea_id);
+                              setActiveTab('scripts');
+                            }}
+                          >
+                            Script Studio
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Click Seed</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: YOUTUBE CHANNEL (PHASE 4) */}
         {activeTab === 'channel' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="card">
@@ -915,7 +1054,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: TOPIC RESEARCH */}
+        {/* TAB 4: TOPIC RESEARCH */}
         {activeTab === 'research' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="card">
@@ -978,7 +1117,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: IDEA BOARD */}
+        {/* TAB 5: IDEA BOARD */}
         {activeTab === 'ideas' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Create Idea Form */}
@@ -1088,7 +1227,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 5: SCRIPT & STORYBOARD STUDIO */}
+        {/* TAB 6: SCRIPT & STORYBOARD STUDIO */}
         {activeTab === 'scripts' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Idea Selection Header */}
@@ -1097,7 +1236,7 @@ export default function App() {
                 <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Active Idea:</span>
                 <select 
                   className="form-select"
-                  style={{ marginLeft: '0.5rem', fontWeight: 600 }}
+                  style={{ marginLeft: '0.5rem', fontWeight: 600, maxWidth: '400px' }}
                   value={selectedIdeaId}
                   onChange={(e) => setSelectedIdeaId(e.target.value)}
                 >
@@ -1107,7 +1246,7 @@ export default function App() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button className="btn btn-secondary" onClick={handleDraftScript} disabled={loading}>
                   <RefreshCw size={14}/> {currentScript ? 'Regenerate Draft' : 'Generate Script Draft'}
                 </button>
@@ -1232,7 +1371,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: REVIEW & PUBLISHING */}
+        {/* TAB 7: REVIEW & PUBLISHING */}
         {activeTab === 'review' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="grid-2">
@@ -1414,7 +1553,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 7: ANALYTICS (PHASE 6) */}
+        {/* TAB 8: ANALYTICS */}
         {activeTab === 'analytics' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="card" style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -1510,7 +1649,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 8: COMMENTS & COMMUNITY (PHASE 6) */}
+        {/* TAB 9: COMMENTS & COMMUNITY */}
         {activeTab === 'comments' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="card">
@@ -1586,7 +1725,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 9: BUDGET & AUDIT */}
+        {/* TAB 10: BUDGET & AUDIT */}
         {activeTab === 'budget' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="grid-2">
