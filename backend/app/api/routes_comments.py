@@ -50,7 +50,16 @@ def draft_ai_reply(id: str, payload: ReplyDraftRequest, db: Session = Depends(ge
     reservation = reserve_budget(db, "claim_verification", {"comment_id": id})
 
     try:
-        if settings.GENAI_API_KEY:
+        if settings.LLM_PROVIDER == "ollama":
+            from app.providers.ollama_provider import OllamaTextProvider
+            ollama = OllamaTextProvider()
+            comment.proposed_reply = ollama.draft_comment_reply(
+                comment_text=comment.text_snapshot,
+                video_title=comment.video_title or "ClearTech Minute Short",
+                custom_instructions=payload.custom_instructions or ""
+            )
+            actual_cost = 0.0
+        elif settings.GENAI_API_KEY:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=settings.GENAI_API_KEY)
@@ -66,12 +75,14 @@ def draft_ai_reply(id: str, payload: ReplyDraftRequest, db: Session = Depends(ge
             except Exception as e:
                 print(f"[Comments] AI reply error: {e}. Using rule-based draft.")
                 comment.proposed_reply = f"Thanks for watching! {comment.text_snapshot.split('?')[0]} is a great question that we'll feature in an upcoming video!"
+            actual_cost = 0.002
         else:
             comment.proposed_reply = f"Thanks for watching! That's a great question about {comment.video_title}. We'll follow up with a quick Short explaining that!"
+            actual_cost = 0.0
 
         comment.moderation_state = "approved_reply"
         db.commit()
-        reconcile_budget(db, reservation.id, 0.002)
+        reconcile_budget(db, reservation.id, actual_cost)
 
         return {
             "message": "AI reply drafted for owner review",

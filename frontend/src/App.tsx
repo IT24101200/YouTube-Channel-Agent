@@ -42,11 +42,24 @@ export default function App() {
   const [briefName, setBriefName] = useState('');
   const [briefHandle, setBriefHandle] = useState('');
   const [briefPromise, setBriefPromise] = useState('');
+  const [llmStatus, setLlmStatus] = useState<any>(null);
+  const [llmTesting, setLlmTesting] = useState(false);
+
+  // Channel Connection Modal state
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [connectMethod, setConnectMethod] = useState<'direct' | 'oauth'>('direct');
+  const [directName, setDirectName] = useState('');
+  const [directHandle, setDirectHandle] = useState('');
+  const [directChannelId, setDirectChannelId] = useState('');
+  const [directPromise, setDirectPromise] = useState('');
+  const [oauthClientId, setOauthClientId] = useState('');
+  const [oauthClientSecret, setOauthClientSecret] = useState('');
 
   // Initial load
   useEffect(() => {
     fetchChannel();
     fetchAuthStatus();
+    fetchLlmStatus();
     fetchIdeas();
     fetchResearch();
     fetchBudget();
@@ -93,6 +106,35 @@ export default function App() {
       if (res.ok) setAuthStatus(await res.json());
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fetchLlmStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/llm/status`);
+      if (res.ok) setLlmStatus(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTestLlm = async () => {
+    setLlmTesting(true);
+    try {
+      const res = await fetch(`${API_BASE}/llm/test`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          showMsg(`Local LLM (${data.model}) test success: "${data.sample_response}"`);
+          fetchLlmStatus();
+        } else {
+          showMsg(`Local LLM error: ${data.error}`, 'error');
+        }
+      }
+    } catch (e: any) {
+      showMsg(`Failed to test local LLM: ${e.message}`, 'error');
+    } finally {
+      setLlmTesting(false);
     }
   };
 
@@ -320,6 +362,10 @@ export default function App() {
         const data = await res.json();
         if (data.status === 'redirect_required' && data.auth_url) {
           window.location.href = data.auth_url;
+        } else if (data.status === 'not_configured') {
+          setShowConnectModal(true);
+          setConnectMethod('oauth');
+          showMsg(data.message, 'info');
         } else {
           showMsg(data.message || 'Channel connected successfully!');
           fetchAuthStatus();
@@ -327,6 +373,72 @@ export default function App() {
           fetchChannelVideos();
         }
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLinkDirectChannel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!directName.trim() || !directChannelId.trim()) {
+      showMsg('Please provide at least Channel Name and Channel ID (e.g. UC...)', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/youtube/link-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: directName.trim(),
+          handle: directHandle.trim() || `@${directName.trim().replace(/\s+/g, '')}`,
+          channel_id: directChannelId.trim(),
+          viewer_promise: directPromise.trim()
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showMsg(data.message || 'YouTube Channel linked successfully!');
+        setShowConnectModal(false);
+        fetchAuthStatus();
+        fetchChannel();
+        fetchChannelVideos();
+      } else {
+        const err = await res.json();
+        showMsg(err.detail || 'Failed to link channel', 'error');
+      }
+    } catch (e: any) {
+      showMsg(e.message || 'Error linking channel', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveOAuthAndConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oauthClientId.trim() || !oauthClientSecret.trim()) {
+      showMsg('Please provide both Client ID and Client Secret from Google Cloud Console', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/youtube/configure-oauth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: oauthClientId.trim(),
+          client_secret: oauthClientSecret.trim()
+        })
+      });
+      if (res.ok) {
+        showMsg('Google OAuth credentials saved! Initiating Google login...');
+        handleConnectChannel('standard');
+      } else {
+        const err = await res.json();
+        showMsg(err.detail || 'Failed to save OAuth credentials', 'error');
+      }
+    } catch (e: any) {
+      showMsg(e.message || 'Error saving OAuth credentials', 'error');
     } finally {
       setLoading(false);
     }
@@ -728,6 +840,25 @@ export default function App() {
             {channelData?.channel?.pause_publishing ? 'Resume Pub' : 'Pause Pub'}
           </button>
 
+          {/* LLM Engine Indicator */}
+          <div 
+            className={`badge ${llmStatus?.is_connected ? 'badge-green' : 'badge-amber'}`}
+            title={`Local LLM: ${llmStatus?.provider?.toUpperCase() || 'OLLAMA'} (${llmStatus?.model || 'llama3.2:3b'}) • ${llmStatus?.is_connected ? 'Online' : 'Offline'}. Click to test.`}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', userSelect: 'none' }}
+            onClick={handleTestLlm}
+          >
+            <span style={{ 
+              width: 8, 
+              height: 8, 
+              borderRadius: '50%', 
+              backgroundColor: llmStatus?.is_connected ? '#22c55e' : '#f59e0b',
+              display: 'inline-block' 
+            }} />
+            <span>{llmStatus?.provider === 'ollama' ? '🦙 Ollama' : 'Gemini'}: {llmStatus?.model || 'llama3.2:3b'}</span>
+            <span style={{ fontSize: '0.72rem', opacity: 0.85 }}>({llmStatus?.cost_mode === 'free_local' ? '$0.00' : 'Cloud'})</span>
+            {llmTesting && <RefreshCw size={12} className="spin" />}
+          </div>
+
           <div className="badge badge-blue">
             ${budgetUsage?.summary?.monthly_actual || 0} / ${budgetUsage?.summary?.monthly_limit || 30} USD
           </div>
@@ -913,6 +1044,65 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* Local AI Engine Status Card */}
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">
+                  <BookOpen size={18}/> Local AI Language Model (Ollama)
+                </div>
+                <span className={`badge ${llmStatus?.is_connected ? 'badge-green' : 'badge-amber'}`}>
+                  {llmStatus?.is_connected ? 'Connected & Ready' : 'Service Offline'}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.85rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Active Provider</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 600, color: '#f8fafc', marginTop: '0.2rem' }}>
+                    {llmStatus?.provider === 'ollama' ? '🦙 Ollama (Local Hardware)' : 'Google Gemini (Cloud)'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#22c55e', marginTop: '0.2rem' }}>
+                    {llmStatus?.cost_mode === 'free_local' ? '100% Free • Zero API Cost' : 'Metered API'}
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.85rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Installed Model</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 600, color: '#f8fafc', marginTop: '0.2rem' }}>
+                    {llmStatus?.model || 'llama3.2:3b'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                    Endpoint: {llmStatus?.base_url || 'http://localhost:11434'}
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.85rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Detected Local Models</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#60a5fa', marginTop: '0.2rem' }}>
+                    {llmStatus?.installed_models && llmStatus.installed_models.length > 0 
+                      ? llmStatus.installed_models.join(', ') 
+                      : 'None detected'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                    Cost per script: {llmStatus?.cost_per_script || '$0.00'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.8rem' }}>
+                <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: 0 }}>
+                  Educational scripts, claim verifications, and viewer replies run privately on your local PC via Ollama without spending cloud credits.
+                </p>
+                <button 
+                  className="btn btn-primary btn-sm"
+                  onClick={handleTestLlm}
+                  disabled={llmTesting}
+                >
+                  <RefreshCw size={14} className={llmTesting ? 'spin' : ''}/>
+                  {llmTesting ? 'Testing Local LLM...' : 'Test Local LLM Response'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1072,24 +1262,41 @@ export default function App() {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {!authStatus?.is_connected ? (
-                    <button className="btn btn-primary" onClick={() => handleConnectChannel('demo')} disabled={loading}>
-                      Connect Channel
+                    <button className="btn btn-primary" onClick={() => {
+                      setDirectName(channelData?.brief?.name || '');
+                      setDirectHandle(channelData?.brief?.handle || '');
+                      setDirectChannelId(channelData?.channel?.youtube_channel_id || '');
+                      setShowConnectModal(true);
+                    }} disabled={loading}>
+                      <Plus size={14}/> Connect My YouTube Channel
                     </button>
                   ) : (
-                    <button className="btn btn-danger btn-sm" onClick={handleDisconnectChannel} disabled={loading}>
-                      <Unlink size={14}/> Disconnect Channel
-                    </button>
+                    <>
+                      <button className="btn btn-secondary btn-sm" onClick={() => {
+                        setDirectName(authStatus?.channel_info?.title || channelData?.brief?.name || '');
+                        setDirectHandle(authStatus?.channel_info?.custom_url || channelData?.brief?.handle || '');
+                        setDirectChannelId(authStatus?.channel_info?.channel_id || channelData?.channel?.youtube_channel_id || '');
+                        setShowConnectModal(true);
+                      }} disabled={loading}>
+                        Switch / Re-link Channel
+                      </button>
+                      <button className="btn btn-danger btn-sm" onClick={handleDisconnectChannel} disabled={loading}>
+                        <Unlink size={14}/> Disconnect Channel
+                      </button>
+                    </>
                   )}
-                  <a 
-                    href="https://studio.youtube.com" 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="btn btn-secondary btn-sm"
-                  >
-                    Open YouTube Studio <ExternalLink size={14}/>
-                  </a>
+                  {authStatus?.is_connected && (
+                    <a 
+                      href={authStatus?.channel_info?.channel_id && !authStatus?.channel_info?.channel_id?.startsWith('UC_DEMO') ? `https://studio.youtube.com/channel/${authStatus.channel_info.channel_id}` : "https://studio.youtube.com"} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Open YouTube Studio <ExternalLink size={14}/>
+                    </a>
+                  )}
                 </div>
               </div>
 
@@ -1097,6 +1304,170 @@ export default function App() {
                 <strong>Phase 4 Compliance:</strong> In accordance with YouTube API developer policies, test uploads from developer applications are uploaded strictly with <code>privacyStatus: private</code>. You can review and publish them inside desktop YouTube Studio.
               </div>
             </div>
+
+            {/* Connect Channel Modal / Box */}
+            {showConnectModal && (
+              <div className="card" style={{ border: '2px solid #3b82f6', background: 'rgba(30, 41, 59, 0.98)' }}>
+                <div className="card-header">
+                  <div className="card-title">
+                    <Radio size={18}/> Connect Your YouTube Channel
+                  </div>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setShowConnectModal(false)}>
+                    Close
+                  </button>
+                </div>
+
+                <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1rem' }}>
+                  Choose how you want to connect your YouTube channel to the agent:
+                </p>
+
+                {/* Tab switch between Direct Link and Google OAuth */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+                  <button 
+                    className={`btn btn-sm ${connectMethod === 'direct' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setConnectMethod('direct')}
+                    type="button"
+                  >
+                    1. Link Channel Directly (Instant &amp; Recommended)
+                  </button>
+                  <button 
+                    className={`btn btn-sm ${connectMethod === 'oauth' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setConnectMethod('oauth')}
+                    type="button"
+                  >
+                    2. Google OAuth 2.0 (Live Google Login)
+                  </button>
+                </div>
+
+                {connectMethod === 'direct' ? (
+                  <form onSubmit={handleLinkDirectChannel} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ background: 'rgba(59, 130, 246, 0.08)', padding: '0.85rem', borderRadius: '6px', fontSize: '0.83rem', color: '#93c5fd', lineHeight: 1.5 }}>
+                      💡 <strong>Instant Link:</strong> Enter your real YouTube Channel Name, Handle, and Channel ID. All script drafting, topic research, video rendering, and metadata will immediately use your real channel brand!
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                      <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                        <label className="form-label">Your YouTube Channel Name *</label>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="e.g. Chama Tech, Tech With Alex, etc."
+                          value={directName}
+                          onChange={(e) => setDirectName(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                        <label className="form-label">Channel Handle *</label>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="e.g. @ChamaTech"
+                          value={directHandle}
+                          onChange={(e) => setDirectHandle(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                      <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                        <label className="form-label">YouTube Channel ID (e.g. UC...) *</label>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="e.g. UCxxxxxxxxxxxxxxxxxxxxxx"
+                          value={directChannelId}
+                          onChange={(e) => setDirectChannelId(e.target.value)}
+                          required
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                          Found in YouTube Studio &gt; Customization &gt; Basic info &gt; Channel ID
+                        </span>
+                      </div>
+                      <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                        <label className="form-label">Channel Niche / Viewer Promise</label>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="e.g. One tech concept explained in 60 seconds."
+                          value={directPromise}
+                          onChange={(e) => setDirectPromise(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                      <button type="button" className="btn btn-secondary" onClick={() => setShowConnectModal(false)}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn btn-primary" disabled={loading}>
+                        <Check size={14}/> Save &amp; Link My Channel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={handleSaveOAuthAndConnect} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ background: 'rgba(234, 179, 8, 0.08)', padding: '0.85rem', borderRadius: '6px', fontSize: '0.83rem', color: '#fde047', lineHeight: 1.5 }}>
+                      🔑 <strong>Google OAuth Setup (Optional):</strong> To authenticate with your Google account via OAuth, provide your OAuth 2.0 Web Application credentials from Google Cloud Console with redirect URI <code>http://localhost:8000/api/auth/youtube/callback</code>.
+                    </div>
+
+                    {authStatus?.is_configured ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                        <div className="alert alert-success">
+                          Google OAuth credentials are configured in <code>.env</code>!
+                        </div>
+                        <button 
+                          type="button" 
+                          className="btn btn-primary" 
+                          onClick={() => handleConnectChannel('standard')}
+                          disabled={loading}
+                          style={{ alignSelf: 'flex-start' }}
+                        >
+                          Sign In with Google Account <ExternalLink size={14}/>
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                          <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                            <label className="form-label">Google OAuth Client ID</label>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              placeholder="e.g. 123456789-xxxxxx.apps.googleusercontent.com"
+                              value={oauthClientId}
+                              onChange={(e) => setOauthClientId(e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                            <label className="form-label">Google OAuth Client Secret</label>
+                            <input 
+                              type="password" 
+                              className="form-input" 
+                              placeholder="e.g. GOCSPX-xxxxxxxxx"
+                              value={oauthClientSecret}
+                              onChange={(e) => setOauthClientSecret(e.target.value)}
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                          <button type="button" className="btn btn-secondary" onClick={() => setShowConnectModal(false)}>
+                            Cancel
+                          </button>
+                          <button type="submit" className="btn btn-primary" disabled={loading}>
+                            Save &amp; Authorize with Google
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </form>
+                )}
+              </div>
+            )}
 
             {/* Channel Profile & Editorial Brand */}
             <div className="card">

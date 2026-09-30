@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from app.db.database import get_db
 from app.db.models import Script, Idea, Channel, ChannelBrief, EvidenceItem, Approval
-from app.providers.gemini_provider import GeminiTextProvider
+from app.providers.factory import get_text_provider
 from app.workflows.cost_ledger import reserve_budget, reconcile_budget
 
 router = APIRouter(tags=["Scripts"])
@@ -59,7 +59,7 @@ def generate_script_draft(idea_id: str, db: Session = Depends(get_db)):
     reservation = reserve_budget(db, "script_generation", {"idea_id": idea_id})
 
     try:
-        provider = GeminiTextProvider()
+        provider = get_text_provider()
         draft = provider.generate_script(
             topic=idea.question,
             angle=idea.original_angle,
@@ -69,12 +69,21 @@ def generate_script_draft(idea_id: str, db: Session = Depends(get_db)):
         # Get existing version number
         latest_ver = db.query(Script).filter(Script.idea_id == idea_id).count()
 
+        # Ensure narration is always a string
+        narr = draft.get("narration", "")
+        if isinstance(narr, dict):
+            narr_str = " ".join(str(v) for v in narr.values())
+        elif isinstance(narr, list):
+            narr_str = " ".join(str(v) for v in narr)
+        else:
+            narr_str = str(narr)
+
         script = Script(
             idea_id=idea.id,
             version=latest_ver + 1,
-            learning_goal=draft.get("learning_goal", ""),
+            learning_goal=str(draft.get("learning_goal", "")),
             title_options=draft.get("title_options", [idea.question]),
-            narration=draft.get("narration", ""),
+            narration=narr_str,
             scenes=draft.get("scenes", []),
             claims=draft.get("claims", []),
             verification_status="pending",
@@ -87,13 +96,19 @@ def generate_script_draft(idea_id: str, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(script)
 
-        # Reconcile budget
-        reconcile_budget(db, reservation.id, 0.005)
+        # Reconcile budget (0.00 for local Ollama, 0.005 for cloud)
+        from app.core.config import settings
+        actual_cost = 0.0 if settings.LLM_PROVIDER == "ollama" else 0.005
+        reconcile_budget(db, reservation.id, actual_cost)
 
-        return {"message": "Script generated successfully", "script": _format_script(script)}
+        return {"message": f"Script generated successfully via {settings.LLM_PROVIDER.upper()}", "script": _format_script(script)}
 
     except Exception as e:
-        reconcile_budget(db, reservation.id, 0.0)
+        db.rollback()
+        try:
+            reconcile_budget(db, reservation.id, 0.0)
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/scripts/{id}")
@@ -135,7 +150,7 @@ def verify_script_claims(id: str, db: Session = Depends(get_db)):
     sources = db.query(EvidenceItem).all()
     source_list = [{"id": s.id, "title": s.title, "extract": s.short_extract} for s in sources]
 
-    provider = GeminiTextProvider()
+    provider = get_text_provider()
     verified_claims = provider.verify_claims(
         script_text=script.narration,
         claims=script.claims or [],

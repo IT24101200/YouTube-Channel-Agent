@@ -24,6 +24,9 @@ class Settings:
     ALLOWED_CHANNEL_ID: str = os.getenv("ALLOWED_CHANNEL_ID", "UC_DEMO_CHANNEL_001")
     
     # Model API keys & models
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # 'ollama' or 'gemini'
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
     GENAI_API_KEY: str = os.getenv("GENAI_API_KEY", "")
     TEXT_MODEL_ID: str = os.getenv("TEXT_MODEL_ID", "gemini-3.8-flash")
     IMAGE_MODEL_ID: str = os.getenv("IMAGE_MODEL_ID", "gemini-3.1-flash-lite-image")
